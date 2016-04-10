@@ -729,14 +729,17 @@ string applyDefault(string s, string defaultValue) {
 
 string getColumnName(T, immutable string m)() {
     immutable string defValue = camelCaseToUnderscoreDelimited(getPropertyName!(T,m));
+    string value = defValue;
     alias member = AliasSeq!(__traits(getMember, T, m));
     static if (is(typeof(member) == function)) {
         // function: check overloads
+outer:
         foreach(overload; MemberFunctionsTuple!(T, m)) {
             static if (isGetterFunction!(overload, m)) {
                 foreach(a; __traits(getAttributes, overload)) {
                     static if (is(typeof(a) == Column)) {
-                        return applyDefault(a.name, defValue);
+                        value = applyDefault(a.name, defValue);
+                        break outer;
                     }
                 }
             }
@@ -746,11 +749,12 @@ string getColumnName(T, immutable string m)() {
 
         foreach(a; attribs) {
             static if (is(typeof(a) == Column)) {
-                return applyDefault(a.name, defValue);
+                value = applyDefault(a.name, defValue);
+                break;
             }
         }
     }
-    return defValue;
+    return value;
 }
 
 string getGeneratorCode(T : Object, immutable string m)() {
@@ -935,32 +939,34 @@ When m has a attribute of OneToMany with a name, the atribute.name is used.
 */
 string getOneToManyReferencedPropertyName(T, immutable string m)() {
     alias attribs = AliasSeq!(__traits(getAttributes, __traits(getMember,T,m)));
+    string result = null;
     // first check there is a attribute @OneToMany with a non null name, if so use it!
     foreach( a; attribs) {
         static if( is( typeof(a) == OneToMany ) && a.name != null && a.name.length != 0 ) {
-            return a.name;
+            result = a.name;
         }
     }
-    // No attrib or no name, try to deduce the field name from the type of T's field m
-    alias memberFieldType = typeof(__traits(getMember, T, m));
-    static if( is( memberFieldType == LazyCollection!TAL, TAL )) {
-        alias refererType = TAL;
-    } else {
-        alias refererType = std.range.ElementType!memberFieldType;
-    }
-    // test T has single occurance in refererType
-    import std.traits : FieldTypeTuple, Filter;
-    alias refererFields = FieldTypeTuple!refererType;
-    enum bool isSameType(U) = is( T == U ) || is ( Lazy!T == U );
-    alias refererFieldsofTypeT = Filter!( isSameType, refererFields );
-    // assert there is exactly one field with type T in refererFields
-    // when there is more than one use explicit attributes for each field eg: OneToMany( "field name first referer" ).. OneToMany( "field name second referer" )..
-    static assert( refererFieldsofTypeT.length == 1, "auto deduction of OneToMany referencedPropertyName for " ~ T.stringof ~ "." ~ m ~ " failed: ElementType of " ~ refererType.stringof ~ "[] has " ~ refererFieldsofTypeT.length.stringof ~ " of fields " ~ T.stringof ~ ". (Use explicit OneToMany( fieldname in " ~ refererType.stringof ~ " ) annotations for multiple referers.)" );
-    string result = null;
-    foreach( mf; __traits( allMembers, refererType ) ) {
-        static if( is( typeof(__traits(getMember, refererType, mf)) == T ) ) {
-            result = mf;
-            break;
+    if (result == null) {
+        // No attrib or no name, try to deduce the field name from the type of T's field m
+        alias memberFieldType = typeof(__traits(getMember, T, m));
+        static if( is( memberFieldType == LazyCollection!TAL, TAL )) {
+            alias refererType = TAL;
+        } else {
+            alias refererType = std.range.ElementType!memberFieldType;
+        }
+        // test T has single occurance in refererType
+        import std.traits : FieldTypeTuple, Filter;
+        alias refererFields = FieldTypeTuple!refererType;
+        enum bool isSameType(U) = is( T == U ) || is ( Lazy!T == U );
+        alias refererFieldsofTypeT = Filter!( isSameType, refererFields );
+        // assert there is exactly one field with type T in refererFields
+        // when there is more than one use explicit attributes for each field eg: OneToMany( "field name first referer" ).. OneToMany( "field name second referer" )..
+        static assert( refererFieldsofTypeT.length == 1, "auto deduction of OneToMany referencedPropertyName for " ~ T.stringof ~ "." ~ m ~ " failed: ElementType of " ~ refererType.stringof ~ "[] has " ~ refererFieldsofTypeT.length.stringof ~ " of fields " ~ T.stringof ~ ". (Use explicit OneToMany( fieldname in " ~ refererType.stringof ~ " ) annotations for multiple referers.)" );
+        foreach( mf; __traits( allMembers, refererType ) ) {
+            static if( is( typeof(__traits(getMember, refererType, mf)) == T ) ) {
+                result = mf;
+                break;
+            }
         }
     }
     return result;
@@ -968,13 +974,16 @@ string getOneToManyReferencedPropertyName(T, immutable string m)() {
 
 int getColumnLength(T, immutable string m)() {
     alias typeof(__traits(getMember, T, m)) ti;
+    int value = 0;
     static if (is(ti == function)) {
         // function: check overloads
+outer:
         foreach(overload; MemberFunctionsTuple!(T, m)) {
             static if (isGetterFunction!(overload, m)) {
                 foreach(a; __traits(getAttributes, overload)) {
                     static if (is(typeof(a) == Column)) {
-                        return a.length;
+                        value = a.length;
+                        break outer;
                     }
                 }
             }
@@ -983,11 +992,12 @@ int getColumnLength(T, immutable string m)() {
         alias member = AliasSeq!(__traits(getMember, T, m));
         foreach(a; __traits(getAttributes, member)) {
             static if (is(typeof(a) == Column)) {
-                return a.length;
+                value = a.length;
+                break;
             }
         }
     }
-    return 0;
+    return value;
 }
 
 string getPropertyName(T, string m)() {
