@@ -716,7 +716,7 @@ class TransactionImpl : Transaction {
 
     this(SessionImpl session) {
         this.session = session;
-        this.conn = conn;
+        this.conn = session.conn;
     }
 
     void begin() {
