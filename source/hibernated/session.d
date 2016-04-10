@@ -120,8 +120,25 @@ abstract class Session
 	Query createQuery(string queryString);
 }
 
-/// Transaction interface: TODO
+/// Transaction interface
 interface Transaction {
+    /// Begin this transaction. No-op if this transaction has already been begun.
+    public void begin();
+
+    /// Commit this transaction.
+    public void commit();
+
+    /// Rollback this transaction.
+    public void rollback();
+
+    /// Mark the transaction as rollback-only. Any commits will be turned into rollbacks and throw an exception.
+    public void setRollbackOnly();
+
+    /// Get whether the transaction is rollback-only.
+    public bool getRollbackOnly();
+
+    /// Get wheter the transaction is active.
+    public bool isActive();
 }
 
 /// Interface for usage of HQL queries.
@@ -264,6 +281,7 @@ class SessionImpl : Session {
     Dialect dialect;
     DataSource connectionPool;
     Connection conn;
+	Transaction transaction;
 
     EntityCache[string] cache;
 
@@ -322,8 +340,11 @@ class SessionImpl : Session {
     }
 
     override Transaction beginTransaction() {
-        throw new HibernatedException("Method not implemented");
+        Transaction transaction = new TransactionImpl(this);
+        transaction.begin();
+        return transaction;
     }
+
     override void cancelQuery() {
         throw new HibernatedException("Method not implemented");
     }
@@ -683,6 +704,95 @@ class SessionFactoryImpl : SessionFactory {
         SessionImpl session = new SessionImpl(this, metaData, dialect, connectionPool);
         activeSessions ~= session;
         return session;
+    }
+}
+
+class TransactionImpl : Transaction {
+    private SessionImpl session;
+    private Connection conn;
+    private bool active;
+    private bool oldAutoCommit;
+    private bool rollbackOnly;
+
+    this(SessionImpl session) {
+        this.session = session;
+        this.conn = conn;
+    }
+
+    void begin() {
+        if (active) return;
+        if (session.transaction !is null) {
+            throw new TransactionException("Only one active transaction is allowed");
+        }
+        rollbackOnly = false;
+        session.transaction = this;
+        scope(failure) session.transaction = null;
+        scope(success) active = true;
+        try {
+            oldAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+        } catch (Exception e) {
+            throw new TransactionException(e);
+        }
+    }
+
+    void commit() {
+        if (!isActive) {
+            throw new TransactionException("Transaction not active");
+        }
+        if (rollbackOnly) {
+            rollback();
+            throw new TransactionException("Transaction marked as rollback-only, so rolled back");
+        }
+        try {
+            conn.commit();
+        } catch (Exception e) {
+            try {
+                conn.rollback();
+            } catch (Exception ignored) {
+                // Swallow exception and use original one
+            }
+            throw new TransactionException(e);
+        } finally {
+            session.transaction = null;
+            active = false;
+            rollbackOnly = false;
+            conn.setAutoCommit(oldAutoCommit);
+        }
+    }
+
+    void rollback() {
+        if (!isActive) {
+            throw new TransactionException("Transaction not active");
+        }
+        try {
+            conn.rollback();
+        } catch (Exception e) {
+            throw new TransactionException(e);
+        } finally {
+            session.transaction = null;
+            active = false;
+            rollbackOnly = false;
+            conn.setAutoCommit(oldAutoCommit);
+        }
+    }
+
+    void setRollbackOnly() {
+        if (!isActive) {
+            throw new TransactionException("Transaction not active");
+        }
+        rollbackOnly = true;
+    }
+
+    bool getRollbackOnly() {
+        if (!isActive) {
+            throw new TransactionException("Transaction not active");
+        }
+        return rollbackOnly;
+    }
+
+    bool isActive() {
+        return active;
     }
 }
 
