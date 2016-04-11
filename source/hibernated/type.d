@@ -343,18 +343,16 @@ struct Lazy(T) {
         return get();
     }
 
-    T opAssign(T v) {
+    void opAssign(T v) {
         //writeln("Lazy! opAssign(value)");
         _value = v;
         _delegate = null;
-        return _value;
     }
 
-    ref Lazy!T opAssign(ref Lazy!T v) {
+    void opAssign(ref Lazy!T v) {
         //writeln("Lazy! opAssign(value)");
         _value = v._value;
         _delegate = v._delegate;
-        return this;
     }
     
     void opAssign(delegate_t lazyLoader) {
@@ -400,18 +398,16 @@ struct LazyCollection(T) {
         return cast(TT)get();
     }
     
-    T[] opAssign(T[] v) {
+    void opAssign(T[] v) {
         //writeln("Lazy! opAssign(value)");
         _value = v;
         _delegate = null;
-        return _value;
     }
     
-    ref LazyCollection!T opAssign(ref LazyCollection!T v) {
+    void opAssign(ref LazyCollection!T v) {
         //writeln("Lazy! opAssign(value)");
         _value = v._value;
         _delegate = v._delegate;
-        return this;
     }
     
     void opAssign(delegate_t lazyLoader) {
